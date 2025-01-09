@@ -1,0 +1,49 @@
+/* Main container */
+.main-container {
+    padding: 2rem;
+}
+
+/* Headers */
+.main-header {
+    color: #1f1f1f;
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+/* Forms */
+.stForm {
+    background-color: #f8f9fa;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* File uploader */
+.upload-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    border: 2px dashed #ccc;
+    border-radius: 5px;
+    text-align: center;
+}
+
+/* Progress bar */
+.stProgress > div {
+    background-color: #00cc66;
+}
+
+/* Success messages */
+.success-message {
+    color: #00cc66;
+    padding: 1rem;
+    border-radius: 5px;
+    margin: 1rem 0;
+}
+
+/* Error messages */
+.error-message {
+    color: #ff4444;
+    padding: 1rem;
+    border-radius: 5px;
+    margin: 1rem 0;
+} 
