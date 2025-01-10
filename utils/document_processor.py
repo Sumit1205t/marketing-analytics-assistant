@@ -13,8 +13,13 @@ from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from pathlib import Path
 import mimetypes  # Replace magic with mimetypes
+import warnings
 
 logger = logging.getLogger(__name__)
+
+# Suppress specific warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='pandas.core.frame')
+warnings.filterwarnings('ignore', category=pd.errors.DtypeWarning)
 
 @dataclass
 class ProcessingError:
@@ -507,3 +512,22 @@ class DocumentProcessor:
             }
             for error in self.errors
         ] 
+
+def read_csv_safely(file):
+    """Read CSV with proper error handling and type inference"""
+    try:
+        return pd.read_csv(file, low_memory=False)
+    except Exception as e:
+        print(f"Error reading CSV: {e}")
+        return None
+
+def process_dates(df, date_columns):
+    """Process date columns with explicit format"""
+    for col in date_columns:
+        try:
+            df[col] = pd.to_datetime(df[col], 
+                                   format='mixed',  # Allows multiple formats
+                                   errors='coerce')
+        except Exception as e:
+            print(f"Error processing dates in column {col}: {e}")
+    return df 
