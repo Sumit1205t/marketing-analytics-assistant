@@ -1,10 +1,10 @@
-# 2. Create/Update .gitignore file with all necessary exclusions
-echo "# Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -24,10 +24,6 @@ wheels/
 # Virtual Environment
 venv/
 ENV/
-env/
-.env
-.env.example
-.env.sample
 
 # IDE
 .idea/
@@ -35,14 +31,11 @@ env/
 *.swp
 *.swo
 
-# Project specific
-vector_db/
+# Logs
+logs/
 *.log
-temp_*
-uploads/
-.streamlit/
 
-# OS specific
-.DS_Store
-Thumbs.db" > .gitignore
+# Local development
+.env
+.env.local
 
