@@ -26,6 +26,8 @@ venv/
 ENV/
 env/
 .env
+.env.example
+.env.sample
 
 # IDE
 .idea/

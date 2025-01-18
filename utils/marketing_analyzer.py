@@ -342,8 +342,8 @@ class MarketingAnalyzer:
             # Perform aggregation for each metric
             agg_dfs = []
             for metric in metrics:
-                # Create aggregation for current metric
-                agg_df = df.groupby(dimensions)[metric].agg([
+                # Create aggregation for current metric with observed=True
+                agg_df = df.groupby(dimensions, observed=True)[metric].agg([
                     ('sum', 'sum'),
                     ('avg', 'mean'),
                     ('count', 'count')

@@ -342,7 +342,7 @@ class DataParser:
             # Patterns for different types of data
             patterns = {
                 'date': r'(?i)(?:date|day|time):\s*(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})',
-                'numeric': r'(?i)(?:amount|total|value|revenue|cost):\s*[\$£€]?([\d,]+(?:\.\d{2})?)',
+                'numeric': r'(?i)(?:amount|total|value|revenue|cost|hits):\s*[\$£€]?([\d,]+(?:\.\d{2})?)',
                 'percentage': r'(?i)(?:percentage|rate|share):\s*(\d+(?:\.\d+)?)\s*%',
                 'category': r'(?i)(?:category|type|segment|brand):\s*([A-Za-z\s]+)',
                 'metric': r'(?i)(?:metric|measure|kpi):\s*([A-Za-z\s]+)'
