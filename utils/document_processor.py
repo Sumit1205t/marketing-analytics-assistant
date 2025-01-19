@@ -82,7 +82,7 @@ class DocumentProcessor:
                 'file_type': file_type,
                 'shape': tuple(df.shape),  # Ensure tuple
                 'columns': list(df.columns),  # Ensure list
-                'Top summary':df.describe(),
+                'Top summary': df.describe(),
                 'timestamp': datetime.now().isoformat()
             }
             
@@ -180,7 +180,7 @@ class DocumentProcessor:
             'customertype': ['customertype', 'customer type', 'customer segment'],
             'tenure_bkt': ['tenure', 'tenure bucket', 'tenure_bkt'],
             'datapackpreference': ['data pack', 'pack preference', 'datapackpreference'],
-            'usggrid':['Behaviour Segment','usggrid'],
+            'usggrid': ['Behaviour Segment', 'usggrid'],
             'arpu_bucket': ['arpu', 'revenue bucket', 'arpu_bucket'],
             'campaign_id': ['campaign name']
         }

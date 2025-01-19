@@ -23,8 +23,9 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: my-artifact
+        name: marketing-analytics-assistant
         path: |
           utils/
           app.py
-          requirements.txt 
+          requirements.txt
+        retention-days: 5 

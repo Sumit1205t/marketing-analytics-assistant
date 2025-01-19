@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -24,6 +23,7 @@ wheels/
 # Virtual Environment
 venv/
 ENV/
+env/
 
 # IDE
 .idea/
@@ -38,4 +38,16 @@ logs/
 # Local development
 .env
 .env.local
+.env.example
+.env.sample
+
+# Project specific
+vector_db/
+temp_*
+uploads/
+.streamlit/
+
+# OS specific
+.DS_Store
+Thumbs.db
 
