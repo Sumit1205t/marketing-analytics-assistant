@@ -40,7 +40,9 @@ class Config:
                 'rouge-score',
                 'nltk',
                 'scikit-learn',
-                'plotly'
+                'plotly',
+                'phonenumbers>=8.13.30',
+                'unidecode>=1.3.6'
             ]
             
             for package in required_packages:

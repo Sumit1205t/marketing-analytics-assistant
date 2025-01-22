@@ -9,6 +9,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 import re
+from dateutil import parser
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class MarketingAnalyzer:
             'datapackpreference': 'Preferred data package',
             'arpu_bucket': 'Average revenue per user bucket',
             'usggrid': 'Behaviour Segmentation',
-            'Campaign_ID':'Campaign Name'
+            'campaign_id':'Campaign Name'
         }
         
         # Update with custom config if provided
@@ -168,45 +169,118 @@ class MarketingAnalyzer:
         )
 
     def _analyze_query_intent(self, query: str) -> Dict[str, Any]:
-        """Analyze query intent using ML classifier."""
+        """Analyze query intent with enhanced weekday and date pattern detection."""
         try:
             intent = self.query_classifier.predict([query])[0]
+            query_lower = query.lower()
+
+            # Enhanced time and weekday patterns
+            time_patterns = {
+                'last_7_days': [
+                    'last 7 days', 'past week', 'last week', 
+                    '7 days', 'seven days', 'weekly'
+                ],
+                'last_30_days': [
+                    'last 30 days', 'past month', 'last month', 
+                    '30 days', 'thirty days', 'monthly'
+                ],
+                'last_90_days': [
+                    'last 90 days', 'past quarter', 'last quarter',
+                    '90 days', 'ninety days', 'quarterly'
+                ],
+                'last_365_days': [
+                    'last 365 days', 'past year', 'last year',
+                    'yearly', 'annual', 'this year'
+                ]
+            }
+
+            weekday_patterns = {
+                'monday': ['monday', 'mon'],
+                'tuesday': ['tuesday', 'tue'],
+                'wednesday': ['wednesday', 'wed'],
+                'thursday': ['thursday', 'thu'],
+                'friday': ['friday', 'fri'],
+                'saturday': ['saturday', 'sat'],
+                'sunday': ['sunday', 'sun']
+            }
             
-            # Extract time range if present
+            # Check for specific date in query
+            date = None
+            date_pattern = r'(\d{1,2}-[a-zA-Z]{3}-\d{4})'  # Pattern for date like "2-Jan-2025"
+            date_match = re.search(date_pattern, query)
+            
+            if date_match:
+                try:
+                    date = parser.parse(date_match.group(0)).date()  # Parse the date to a datetime object
+                except Exception as e:
+                    logger.error(f"Error parsing date from query: {e}")
+                    date = None
+            
+            # Check for weekday patterns
+            weekday = None
+            for day, patterns in weekday_patterns.items():
+                if any(pattern in query_lower for pattern in patterns):
+                    weekday = day
+                    break
+            
+            # Check for time patterns
             time_range = None
-            if 'last 7 days' in query.lower():
-                time_range = 'last_7_days'
-            elif 'last 30 days' in query.lower():
-                time_range = 'last_30_days'
-            elif 'last 90 days' in query.lower():
-                time_range = 'last_90_days'
+            for range_key, patterns in time_patterns.items():
+                if any(pattern in query_lower for pattern in patterns):
+                    time_range = range_key
+                    break
             
-            # Extract dimensions
+            # Set default time range if none specified
+            if not time_range:
+                time_range = 'last_30_days'
+                logger.info("No time range specified, using default: last_30_days")
+            
+            # Extract dimensions and metrics
             dimensions = []
             for dim in self.dimensions:
-                if dim.lower() in query.lower() or self.dimensions[dim].lower() in query.lower():
+                if dim.lower() in query_lower or self.dimensions[dim].lower() in query_lower:
                     dimensions.append(dim)
+            
+            # Add weekday as dimension if specified
+            if weekday:
+                date_col = next((col for col in df.columns if 'date' in col.lower()), None)
+                if date_col:
+                    dimensions.append(f'{date_col}_weekday')
             
             # Extract metrics
             metrics = []
             for metric in self.metrics:
-                if metric in query.lower():
+                if metric in query_lower:
                     metrics.append(metric)
             
-            return {
+            # Result formation
+            result = {
                 'intent': intent,
                 'time_range': time_range,
                 'dimensions': dimensions,
-                'metrics': metrics
+                'metrics': metrics,
+                'weekday': weekday,
+                'specific_date': date,  # New field for the specific date
+                'is_default_time_range': time_range == 'last_30_days' and not any(
+                    pattern in query_lower 
+                    for patterns in time_patterns.values() 
+                    for pattern in patterns
+                )
             }
+
+            logger.info(f"Query analysis result: {result}")
+            return result
             
         except Exception as e:
             logger.error(f"Error analyzing query intent: {e}")
             return {
                 'intent': 'unknown',
-                'time_range': None,
+                'time_range': 'last_30_days',
                 'dimensions': [],
-                'metrics': []
+                'metrics': [],
+                'weekday': None,
+                'specific_date': None,  # Default to None if no date is found
+                'is_default_time_range': True
             }
 
     def process_query(self, query: str, df: pd.DataFrame) -> Dict[str, Any]:
@@ -229,13 +303,7 @@ class MarketingAnalyzer:
             metrics = query_intent.get('metrics', [])
             time_range = query_intent.get('time_range')
             
-            # Validate dimensions and metrics
-            if not dimensions:
-                return {
-                    'status': 'error',
-                    'message': 'No dimensions identified in query. Please specify what you want to analyze (e.g., customertype, tenure, etc.)'
-                }
-            
+            # Validate metrics
             if not metrics:
                 return {
                     'status': 'error',
@@ -268,11 +336,7 @@ class MarketingAnalyzer:
                     'recommendations': recommendations
                 }
             }
-            
-            # 8. Evaluate Response Quality
-            if self.rouge_scorer:
-                response = self.evaluate_response(response)
-            
+
             logger.info("Analysis completed successfully")
             return response
 
@@ -284,7 +348,7 @@ class MarketingAnalyzer:
             }
 
     def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Preprocess the data for analysis."""
+        """Preprocess the data for analysis with enhanced date features."""
         try:
             # Create a copy to avoid modifying original
             df = df.copy()
@@ -298,7 +362,14 @@ class MarketingAnalyzer:
                     # Try parsing with different formats
                     if df[col].dtype == 'O':  # Object type
                         df[col] = pd.to_datetime(df[col], errors='coerce')
-                        logger.info(f"Converted {col} using flexible parser")
+                        
+                        # Add date-based features
+                        df[f'{col}_weekday'] = df[col].dt.day_name()
+                        df[f'{col}_day'] = df[col].dt.day
+                        df[f'{col}_month'] = df[col].dt.month_name()
+                        df[f'{col}_year'] = df[col].dt.year
+                        
+                        logger.info(f"Added date features for {col}")
                     
                     logger.info(f"Column {col} type after conversion: {df[col].dtype}")
                     
@@ -314,7 +385,7 @@ class MarketingAnalyzer:
             # Handle categorical columns
             categorical_cols = df.select_dtypes(include=['object']).columns
             for col in categorical_cols:
-                if col not in date_cols:
+                if col not in date_cols and not col.endswith(('weekday', 'month')):
                     df[col] = df[col].astype('category')
             
             logger.info(f"Final column types: {df.dtypes.to_dict()}")
@@ -327,55 +398,47 @@ class MarketingAnalyzer:
             return df
 
     def _aggregate_data(self, df: pd.DataFrame, dimensions: List[str], 
-                       metrics: List[str], time_range: Optional[str] = None) -> pd.DataFrame:
-        """Aggregate data based on dimensions and metrics."""
+                       metrics: List[str], time_range: str) -> pd.DataFrame:
+        """Aggregate data based on dimensions, metrics, and time range."""
         try:
             # Ensure all required columns are present
-            missing_cols = [col for col in dimensions + metrics if col not in df.columns]
-            if missing_cols:
-                raise ValueError(f"Missing required columns: {missing_cols}")
+            required_cols = dimensions + metrics
+            if 'reward_sent_date' in df.columns:
+                required_cols.append('reward_sent_date')
             
-            # Apply time range filter if specified
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                logger.error(f"Missing required columns: {missing_cols}")
+                return None
+
+            # Apply time range filter
             if time_range and 'reward_sent_date' in df.columns:
                 df = self._filter_by_time_range(df, time_range)
-            
-            # Perform aggregation for each metric
-            agg_dfs = []
+                if df.empty:
+                    logger.warning("No data after time range filter")
+                    return None
+
+            # If no dimensions provided, aggregate by date
+            if not dimensions and 'reward_sent_date' in df.columns:
+                df['date'] = pd.to_datetime(df['reward_sent_date']).dt.date
+                dimensions = ['date']
+
+            # Perform aggregation
+            agg_config = {}
             for metric in metrics:
-                # Create aggregation for current metric with observed=True
-                agg_df = df.groupby(dimensions, observed=True)[metric].agg([
-                    ('sum', 'sum'),
-                    ('avg', 'mean'),
-                    ('count', 'count')
-                ]).reset_index()
-                
-                # Rename columns to include metric name
-                agg_df.columns = [
-                    col if col in dimensions 
-                    else f'{metric}_{col}'
-                    for col in agg_df.columns
-                ]
-                
-                # Calculate percentage
-                total = agg_df[f'{metric}_sum'].sum()
-                agg_df[f'{metric}_pct'] = (agg_df[f'{metric}_sum'] / total * 100).round(2)
-                
-                agg_dfs.append(agg_df)
-            
-            # Merge all aggregated dataframes
-            if len(agg_dfs) > 1:
-                result = agg_dfs[0]
-                for df_right in agg_dfs[1:]:
-                    result = result.merge(df_right, on=dimensions)
-            else:
-                result = agg_dfs[0]
-            
-            # Sort by the first metric's sum in descending order
-            result = result.sort_values(f'{metrics[0]}_sum', ascending=False)
-            
-            logger.info(f"Aggregation complete. Result shape: {result.shape}")
-            return result
-            
+                agg_config[metric] = ['sum', 'mean', 'count']
+
+            agg_df = df.groupby(dimensions, observed=True).agg(agg_config)
+            agg_df.columns = [f"{col[0]}_{col[1]}" for col in agg_df.columns]
+            agg_df = agg_df.reset_index()
+
+            # Sort by date if it's a time series
+            if 'date' in dimensions:
+                agg_df = agg_df.sort_values('date')
+
+            logger.info(f"Aggregated data shape: {agg_df.shape}")
+            return agg_df
+
         except Exception as e:
             logger.error(f"Error in data aggregation: {e}")
             return None
@@ -385,50 +448,138 @@ class MarketingAnalyzer:
         """Generate visualizations based on analysis results."""
         visualizations = []
         
-        for metric in metrics:
-            # Bar chart for each metric
-            visualizations.append({
-                'type': 'bar',
-                'title': f'{metric.title()} by {dimensions[0].title()}',
-                'data': {
-                    'x': df[dimensions[0]].tolist(),
-                    'y': df[f'{metric}_sum'].tolist()
-                }
-            })
-            
-            # Pie chart for percentage distribution
-            visualizations.append({
-                'type': 'pie',
-                'title': f'{metric.title()} Distribution',
-                'data': {
-                    'labels': df[dimensions[0]].tolist(),
-                    'values': df[f'{metric}_pct'].tolist()
-                }
-            })
-        
-        return visualizations
+        try:
+            # Time series visualization
+            if 'date' in df.columns:
+                for metric in metrics:
+                    # Line chart for trend
+                    visualizations.append({
+                        'type': 'line',
+                        'title': f'{metric.title()} Trend Over Time',
+                        'data': {
+                            'x': df['date'].astype(str).tolist(),
+                            'y': df[f'{metric}_sum'].tolist(),
+                            'labels': {
+                                'x': 'Date',
+                                'y': f'Total {metric.title()}'
+                            }
+                        }
+                    })
+                    
+                    # Moving average for trend smoothing
+                    if len(df) > 3:
+                        df[f'{metric}_ma'] = df[f'{metric}_sum'].rolling(window=3).mean()
+                        visualizations.append({
+                            'type': 'line',
+                            'title': f'{metric.title()} Trend (3-day Moving Average)',
+                            'data': {
+                                'x': df['date'].astype(str).tolist(),
+                                'y': df[f'{metric}_ma'].tolist(),
+                                'labels': {
+                                    'x': 'Date',
+                                    'y': f'{metric.title()} (Moving Average)'
+                                }
+                            }
+                        })
+
+            # Dimension-based visualizations
+            for dimension in dimensions:
+                if dimension != 'date':
+                    for metric in metrics:
+                        # Bar chart
+                        visualizations.append({
+                            'type': 'bar',
+                            'title': f'{metric.title()} by {dimension.title()}',
+                            'data': {
+                                'x': df[dimension].tolist(),
+                                'y': df[f'{metric}_sum'].tolist()
+                            }
+                        })
+                        
+                        # Pie chart for distribution
+                        visualizations.append({
+                            'type': 'pie',
+                            'title': f'{metric.title()} Distribution by {dimension.title()}',
+                            'data': {
+                                'labels': df[dimension].tolist(),
+                                'values': df[f'{metric}_sum'].tolist()
+                            }
+                        })
+
+            logger.info(f"Generated {len(visualizations)} visualizations")
+            return visualizations
+
+        except Exception as e:
+            logger.error(f"Error generating visualizations: {e}")
+            return []
 
     def _generate_insights(self, df: pd.DataFrame, dimensions: List[str], 
                           metrics: List[str]) -> str:
         """Generate insights from analysis results."""
-        insights = []
-        
-        for dimension in dimensions:
-            insights.append(f"\n{dimension.title()} Analysis:")
-            for metric in metrics:
-                total = df[f'{metric}_sum'].sum()
-                top_segment = df.iloc[0]
-                bottom_segment = df.iloc[-1]
-                
-                insights.extend([
-                    f"• Total {metric}: {total:,.0f}",
-                    f"• Top performing {dimension}: {top_segment[dimension]}",
-                    f"  - {metric}: {top_segment[f'{metric}_sum']:,.0f} ({top_segment[f'{metric}_pct']:.1f}%)",
-                    f"• Lowest performing {dimension}: {bottom_segment[dimension]}",
-                    f"  - {metric}: {bottom_segment[f'{metric}_sum']:,.0f} ({bottom_segment[f'{metric}_pct']:.1f}%)"
-                ])
-        
-        return '\n'.join(insights)
+        try:
+            insights = []
+            
+            # If no dimensions, generate time-based insights
+            if not dimensions or (len(dimensions) == 1 and dimensions[0] == 'date'):
+                for metric in metrics:
+                    total = df[f'{metric}_sum'].sum()
+                    avg = df[f'{metric}_mean'].mean()
+                    max_val = df[f'{metric}_sum'].max()
+                    min_val = df[f'{metric}_sum'].min()
+                    
+                    insights.extend([
+                        f"\nTime-based {metric.title()} Analysis:",
+                        f"• Total {metric}: {total:,.0f}",
+                        f"• Average {metric} per period: {avg:,.2f}",
+                        f"• Highest {metric}: {max_val:,.0f}",
+                        f"• Lowest {metric}: {min_val:,.0f}"
+                    ])
+                    
+                    # Calculate period-over-period change
+                    if len(df) > 1:
+                        change = ((df[f'{metric}_sum'].iloc[-1] - df[f'{metric}_sum'].iloc[0]) 
+                                 / df[f'{metric}_sum'].iloc[0] * 100)
+                        insights.append(f"• Overall change: {change:+.1f}%")
+            
+            # Generate dimension-based insights
+            else:
+                for dimension in dimensions:
+                    if dimension != 'date':
+                        insights.append(f"\n{dimension.title()} Analysis:")
+                        for metric in metrics:
+                            total = df[f'{metric}_sum'].sum()
+                            
+                            # Calculate percentages
+                            df[f'{metric}_pct'] = (df[f'{metric}_sum'] / total * 100)
+                            
+                            # Get top and bottom segments
+                            top_segment = df.nlargest(1, f'{metric}_sum').iloc[0]
+                            bottom_segment = df.nsmallest(1, f'{metric}_sum').iloc[0]
+                            
+                            insights.extend([
+                                f"• Total {metric}: {total:,.0f}",
+                                f"• Top performing {dimension}: {top_segment[dimension]}",
+                                f"  - {metric}: {top_segment[f'{metric}_sum']:,.0f} "
+                                f"({top_segment[f'{metric}_pct']:.1f}%)",
+                                f"• Lowest performing {dimension}: {bottom_segment[dimension]}",
+                                f"  - {metric}: {bottom_segment[f'{metric}_sum']:,.0f} "
+                                f"({bottom_segment[f'{metric}_pct']:.1f}%)"
+                            ])
+                            
+                            # Add distribution insight
+                            if len(df) > 1:
+                                std_dev = df[f'{metric}_sum'].std()
+                                cv = (std_dev / df[f'{metric}_sum'].mean()) * 100
+                                insights.append(
+                                    f"• Distribution: {cv:.1f}% coefficient of variation "
+                                    f"({'High' if cv > 50 else 'Moderate' if cv > 25 else 'Low'} variability)"
+                                )
+            
+            return '\n'.join(insights)
+            
+        except Exception as e:
+            logger.error(f"Error generating insights: {e}")
+            return "Unable to generate insights due to an error."
 
     def _generate_recommendations(self, df: pd.DataFrame, dimensions: List[str], 
                                 metrics: List[str]) -> List[str]:

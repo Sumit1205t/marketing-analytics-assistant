@@ -28,8 +28,20 @@ class DocumentProcessor:
             # Setup logging
             self._setup_logging()
             
-            # Initialize analyzer
-            self.marketing_analyzer = MarketingAnalyzer()
+            # Initialize analyzer with default config
+            default_config = {
+                'metrics': {
+                    'revenue': {'type': 'monetary'},
+                    'hits': {'type': 'engagement'},
+                    'subs': {'type': 'conversion'}
+                },
+                'dimensions': {
+                    'customertype': 'Customer segmentation',
+                    'tenure_bkt': 'Customer tenure bucket',
+                    'datapackpreference': 'Preferred data package'
+                }
+            }
+            self.marketing_analyzer = MarketingAnalyzer(config=default_config)
             
             # Initialize data parser
             self.data_parser = DataParser()
@@ -100,58 +112,46 @@ class DocumentProcessor:
                 'message': error_msg
             }
 
-    def process_query(self, query: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a natural language query and return relevant analysis."""
+    def process_query(self, query: str, content: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a query against document content."""
         try:
-            logger.info(f"Processing query: {query}")
+            # Validate query
+            if not query or not isinstance(query, str):
+                return {
+                    'status': 'error',
+                    'message': 'Invalid query format'
+                }
             
-            # Extract DataFrame from data
-            if isinstance(data, dict) and 'data' in data:
-                df = data['data']
-            elif isinstance(data, pd.DataFrame):
-                df = data
+            # Get the DataFrame from content
+            if isinstance(content, dict) and 'data' in content:
+                df = content['data']
             else:
-                raise ValueError("Invalid data format. Expected DataFrame or dict with 'data' key.")
+                return {
+                    'status': 'error',
+                    'message': 'Invalid data format'
+                }
             
             if not isinstance(df, pd.DataFrame):
-                raise ValueError("Data must be a pandas DataFrame")
-            
-            logger.info(f"Processing DataFrame with shape: {df.shape}")
-            logger.info(f"Available columns: {df.columns.tolist()}")
-            
-            # Extract required columns based on query
-            required_columns = self._get_required_columns(query, df.columns)
-            logger.info(f"Required columns: {required_columns}")
-            
-            if not required_columns:
                 return {
                     'status': 'error',
-                    'message': 'Could not determine required columns from query. Please specify metrics or dimensions.'
+                    'message': 'Data must be a pandas DataFrame'
                 }
             
-            # Validate required columns exist
-            missing_cols = [col for col in required_columns if col not in df.columns]
-            if missing_cols:
-                return {
-                    'status': 'error',
-                    'message': f'Missing required columns: {", ".join(missing_cols)}'
-                }
+            # Process query using MarketingAnalyzer
+            response = self.marketing_analyzer.process_query(query, df)
             
-            # Select required columns
-            selected_df = df[required_columns].copy()
-            logger.info(f"Selected columns: {selected_df.columns.tolist()}")
-            logger.info(f"Found {len(selected_df)} matching records")
+            if response['status'] == 'error':
+                logger.error(f"Query processing error: {response['message']}")
+            else:
+                logger.info("Query processed successfully")
             
-            # Process through marketing analyzer
-            results = self.marketing_analyzer.process_query(query, selected_df)
-            
-            return results
+            return response
             
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             return {
                 'status': 'error',
-                'message': f"Query processing error: {str(e)}"
+                'message': f'Query processing error: {str(e)}'
             }
 
     def _setup_logging(self):
